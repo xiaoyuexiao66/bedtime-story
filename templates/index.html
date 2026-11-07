@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>睡前故事机</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <h1>睡前故事机</h1>
+      <p class="sub">用妈妈的声音，讲一个温柔的故事</p>
+      {% if engine == 'sherpa' %}
+        <span class="badge ok">声音克隆已就绪</span>
+      {% elif engine == 'say' %}
+        <span class="badge warn">当前是系统语音（调试模式）</span>
+      {% else %}
+        <span class="badge err">语音引擎未就绪</span>
+      {% endif %}
+    </header>
+
+    <section class="card">
+      <h2>1. 录一段你的声音</h2>
+      <p class="hint">安静环境下读一句话，3~8 秒即可。比如：“宝宝，今天妈妈给你讲一个小兔子的故事。”</p>
+
+      <div class="recorder">
+        <button id="recordBtn" class="btn primary" type="button">开始录音</button>
+        <span id="recordStatus" class="status">还没录音</span>
+      </div>
+      <audio id="preview" controls hidden></audio>
+
+      <form id="voiceForm" class="voice-form" hidden>
+        <label>声音名字
+          <input id="voiceName" name="name" value="妈妈" maxlength="20">
+        </label>
+        <label>你刚才读的文字
+          <textarea id="refText" name="ref_text" rows="2" placeholder="把刚才读的那句话原样打出来"></textarea>
+        </label>
+        <button class="btn" type="submit">保存这段声音</button>
+      </form>
+
+      {% if voices %}
+      <div class="voice-list">
+        <h3>已保存的声音</h3>
+        {% for v in voices %}
+          <div class="voice-item">
+            <span>{{ v.name }}</span>
+            <small>{{ v.created_at }}</small>
+          </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>2. 生成一个故事</h2>
+      <form id="storyForm" class="story-form">
+        <label>故事主题
+          <input id="topic" name="topic" placeholder="比如：小兔子找月亮、会唱歌的小熊" maxlength="50" required>
+        </label>
+        <label>宝宝年龄
+          <select id="age" name="age">
+            <option value="2">2 岁</option>
+            <option value="3">3 岁</option>
+            <option value="4" selected>4 岁</option>
+            <option value="5">5 岁</option>
+            <option value="6">6 岁</option>
+          </select>
+        </label>
+        <button class="btn primary" type="submit">生成故事</button>
+        <span id="storyStatus" class="status"></span>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>3. 故事库</h2>
+      {% if stories %}
+        <div class="story-list">
+          {% for s in stories %}
+            <a class="story-item" href="/story/{{ s.id }}">
+              <div>
+                <strong>{{ s.title }}</strong>
+                <small>{{ s.created_at }} · {{ s.age }} 岁</small>
+              </div>
+              {% if s.audio_path %}
+                <span class="tag">已配音</span>
+              {% else %}
+                <span class="tag plain">待配音</span>
+              {% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="hint">还没有故事，先在上面生成一个吧。</p>
+      {% endif %}
+    </section>
+  </main>
+
+  <script src="/static/recorder.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

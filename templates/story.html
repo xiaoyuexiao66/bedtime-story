@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{ story.title }} · 睡前故事机</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="topbar">
+      <a href="/" class="back">← 回首页</a>
+    </header>
+
+    <article class="card">
+      <h1 class="story-title">{{ story.title }}</h1>
+      <p class="meta">{{ story.created_at }} · {{ story.age }} 岁 · 主题：{{ story.topic }}</p>
+
+      <div id="audioBox" class="audio-box" {% if not story.audio_path %}hidden{% endif %}>
+        <audio id="player" controls
+               src="{% if story.audio_path %}/audio/story_{{ story.id }}.wav{% endif %}"></audio>
+      </div>
+
+      <div class="story-body">
+        {% for para in story.body.split('\n') if para.strip() %}
+          <p>{{ para }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="tts-panel">
+        <label>用谁的声音朗读
+          <select id="voiceSelect">
+            {% for v in voices %}
+              <option value="{{ v.id }}">{{ v.name }}（{{ v.created_at }}）</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% if not voices %}
+          <p class="hint">还没有录过声音，请先回首页录一段。</p>
+        {% endif %}
+        <button id="ttsBtn" class="btn primary" type="button" {% if not voices %}disabled{% endif %}>
+          {% if story.audio_path %}重新合成{% else %}用我的声音朗读{% endif %}
+        </button>
+        <p id="ttsStatus" class="status"></p>
+      </div>
+    </article>
+  </main>
+
+  <script>
+    const storyId = {{ story.id }};
+    const btn = document.getElementById('ttsBtn');
+    const status = document.getElementById('ttsStatus');
+    const audioBox = document.getElementById('audioBox');
+    const player = document.getElementById('player');
+
+    btn.addEventListener('click', async () => {
+      const voiceId = document.getElementById('voiceSelect').value;
+      if (!voiceId) return;
+      btn.disabled = true;
+      status.textContent = '正在合成……第一句出来前可能要等一会儿，请别关页面。';
+      try {
+        const resp = await fetch(`/api/stories/${storyId}/tts`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({voice_id: Number(voiceId)})
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || '合成失败');
+        player.src = data.audio_url + '?t=' + Date.now();
+        audioBox.hidden = false;
+        player.play().catch(() => {});
+        status.textContent = `合成完成，用时 ${data.seconds} 秒（引擎：${data.engine}）`;
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
