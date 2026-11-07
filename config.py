@@ -18,6 +18,10 @@ DB_PATH = DATA_DIR / "stories.db"
 # ---- 模型目录 ----
 MODEL_DIR = Path(os.environ.get("BEDTIME_MODEL_DIR", str(ROOT / "models")))
 ZIPVOICE_DIR = MODEL_DIR / "zipvoice"
+# 本地语音识别模型（把小朋友说的话转成文字）
+ASR_DIR = Path(
+    os.environ.get("BEDTIME_ASR_DIR", str(MODEL_DIR / "asr" / "paraformer-zh-small"))
+)
 
 # ---- 云端故事模型（Anthropic 兼容接口）----
 ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "")
@@ -31,6 +35,9 @@ ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "deepseek-v4.1-flash-1017")
 TTS_ENGINE = os.environ.get("BEDTIME_TTS_ENGINE", "auto")
 TTS_THREADS = int(os.environ.get("BEDTIME_TTS_THREADS", "2"))
 TTS_NUM_STEPS = int(os.environ.get("BEDTIME_TTS_NUM_STEPS", "4"))
+
+# ---- 语音识别 ----
+ASR_THREADS = int(os.environ.get("BEDTIME_ASR_THREADS", "2"))
 
 HOST = os.environ.get("BEDTIME_HOST", "0.0.0.0")
 PORT = int(os.environ.get("BEDTIME_PORT", "8000"))
@@ -61,8 +68,10 @@ def refresh() -> None:
     TTS_ENGINE = os.environ.get("BEDTIME_TTS_ENGINE", "auto")
     TTS_THREADS = int(os.environ.get("BEDTIME_TTS_THREADS", "2"))
     TTS_NUM_STEPS = int(os.environ.get("BEDTIME_TTS_NUM_STEPS", "4"))
+    global ASR_THREADS
+    ASR_THREADS = int(os.environ.get("BEDTIME_ASR_THREADS", "2"))
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, AUDIO_DIR, VOICE_DIR, MODEL_DIR):
+    for d in (DATA_DIR, AUDIO_DIR, VOICE_DIR, MODEL_DIR, DATA_DIR / "tmp"):
         d.mkdir(parents=True, exist_ok=True)

@@ -7,6 +7,7 @@
 
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from starlette.requests import Request
 
 import config
 import db
+import asr_engine
 import story_llm
 import tts_engine
 
@@ -32,6 +34,18 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("bedtime")
+
+
+def _warm_asr():
+    """启动后在后台加载识别模型，孩子第一次点按钮时就不用干等 3~4 秒。"""
+    try:
+        asr_engine.get_asr().warm_up()
+        log.info("语音识别模型已就绪")
+    except Exception as e:
+        log.info("语音识别暂时不可用：%s", e)
+
+
+threading.Thread(target=_warm_asr, daemon=True).start()
 
 app = FastAPI(title="睡前故事机")
 app.mount("/static", StaticFiles(directory=str(config.ROOT / "static")), name="static")
@@ -78,7 +92,12 @@ def health():
         engine = tts_engine.get_engine().name
     except tts_engine.TTSError:
         pass
-    return {"ok": True, "tts_engine": engine}
+    asr_ok = False
+    try:
+        asr_ok = asr_engine.get_asr().available()
+    except asr_engine.ASRError:
+        pass
+    return {"ok": True, "tts_engine": engine, "asr": asr_ok}
 
 
 @app.get("/api/stories")
@@ -108,6 +127,38 @@ def api_create_story(payload: dict):
 @app.get("/api/voices")
 def api_list_voices():
     return db.list_voices()
+
+
+@app.post("/api/transcribe")
+def api_transcribe(file: UploadFile = File(...)):
+    """把小孩说的一句话转成文字，用作故事主题。"""
+    raw = file.file.read()
+    if len(raw) < 1000:
+        raise HTTPException(400, "录音太短，没听清，再来一次吧")
+    if raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
+        raise HTTPException(400, "只支持 WAV 格式的录音")
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(400, "录音太长了，说短一点吧")
+
+    tmp_dir = config.DATA_DIR / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp = tmp_dir / f"asr_{int(time.time() * 1000)}.wav"
+    tmp.write_bytes(raw)
+    try:
+        engine = asr_engine.get_asr()
+        text = engine.transcribe(tmp)
+    except asr_engine.ASRError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        log.exception("语音识别失败")
+        raise HTTPException(500, f"语音识别失败：{e}")
+    finally:
+        tmp.unlink(missing_ok=True)
+
+    if not text:
+        raise HTTPException(400, "没听清，再靠近一点说一次好吗？")
+    log.info("语音识别：%s", text)
+    return {"text": text}
 
 
 @app.post("/api/voices")

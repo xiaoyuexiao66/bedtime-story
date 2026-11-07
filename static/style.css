@@ -135,6 +135,19 @@ textarea { resize: vertical; }
   box-shadow: 0 6px 16px rgba(123, 94, 167, 0.28);
 }
 
+.btn.big {
+  font-size: 17px;
+  padding: 16px 28px;
+}
+
+.voice-topic {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
 .recorder {
   display: flex;
   align-items: center;

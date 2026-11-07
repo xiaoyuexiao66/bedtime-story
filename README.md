@@ -3,6 +3,7 @@
 借鉴 [mommy-story-on-device](https://github.com/qhvssonic/mommy-story-on-device) 的思路，用 **Python + 网页** 重新实现的本地睡前故事应用：
 
 - 录 3~8 秒你的声音
+- **孩子对着麦克风说一句话，就能按他说的内容生成故事**（本地识别，录音不出本机）
 - 调云端大模型生成温馨的睡前故事
 - 用 **ZipVoice 声音克隆**（本地推理）把故事读出来
 - 故事保存在本地 SQLite，电脑和 iPhone 都能打开听
@@ -15,7 +16,7 @@
 |------|----------|
 | **Linux 笔记本（推荐）** | 完整功能：故事生成 + 声音克隆（ZipVoice 本地推理） |
 | macOS 13+ | 完整功能 |
-| **macOS 12 及以下** | 用现成 wheel 不行，但在本机自编译 sherpa-onnx 后可以完整使用（见第五节） |
+| **macOS 12 及以下** | 用现成 wheel 不行，但在本机自编译 sherpa-onnx 后可以完整使用（见第六节） |
 
 ## 目录结构
 
@@ -23,11 +24,13 @@
 bedtime-story/
 ├── app.py                  # 网页服务（FastAPI）
 ├── story_llm.py            # 调用云端大模型写故事
+├── asr_engine.py           # 语音识别：把孩子说的话转成文字（本地）
 ├── tts_engine.py           # 语音合成：ZipVoice 克隆 / 系统语音
 ├── db.py                   # SQLite 故事库
 ├── config.py               # 配置与环境变量
 ├── scripts/
 │   ├── download_models.py  # 下载 ZipVoice 模型（约 194 MB）
+│   ├── download_asr.py     # 下载语音识别模型（约 78 MB）
 │   └── test_tts.py         # 合成测试
 ├── templates/              # 网页模板
 ├── static/                 # 前端样式和录音 JS
@@ -51,8 +54,10 @@ python app.py
 
 浏览器打开 <http://localhost:8000>。
 
+想在 Mac 上试语音说主题，再下载一个识别模型：`python scripts/download_asr.py`（约 78 MB）。
+
 Mac 上会自动使用系统语音（没有克隆能力），用来验证录音、生成故事、播放、故事库这些流程。
-如果这台 Mac 已经按第五节自编译过 sherpa-onnx，就会自动改用声音克隆。
+如果这台 Mac 已经按第六节自编译过 sherpa-onnx，就会自动改用声音克隆。
 
 > 如果 Mac 的虚拟环境里装过 sherpa-onnx（之前测试留下的），先卸载避免干扰：
 > `pip uninstall -y sherpa-onnx sherpa-onnx-core`
@@ -88,6 +93,7 @@ pip install -r requirements.txt -r requirements-tts.txt
 
 ```bash
 python scripts/download_models.py    # 约 194 MB，支持断点续传
+python scripts/download_asr.py       # 约 78 MB，语音输入用
 python scripts/test_tts.py           # 用示例声音合成一句话
 ```
 
@@ -132,7 +138,33 @@ BEDTIME_PORT=8443 python app.py
 
 > iPhone 只是听故事的话，用 HTTP 就够了，不需要 HTTPS。
 
-## 四、常见问题
+## 四、让小朋友用语音说故事
+
+页面上第 2 步有一个大按钮「🎤 说出你想听的故事」：点一下，对着麦克风说一句话（比如“小恐龙找朋友”），6 秒后自动停止录音。
+
+处理流程：
+
+1. 浏览器把录音编码成 WAV，上传到本机服务；
+2. 服务用 **Paraformer 中文模型**（`asr_engine.py`）在本机把语音转成文字；
+3. 文字自动填进“故事主题”，并立刻开始生成故事。
+
+**录音不会离开这台电脑。** 只有生成故事的文字会发给云端大模型，识别这一步完全离线。
+
+首次使用需要下载识别模型：
+
+```bash
+python scripts/download_asr.py    # 约 78 MB
+```
+
+启动日志里出现“语音识别模型已就绪”就说明准备好了；`/api/health` 也会显示 `"asr": true`。
+
+小提示：
+
+- 识别在麦克风权限、HTTPS 上的要求和第三节的录音一样；
+- 在安静环境里、离麦克风近一点，准确率明显更高；
+- 说错了没关系，直接再点一次按钮重说；也可以手动改“故事主题”输入框再生成。
+
+## 五、常见问题
 
 **Q：合成很慢？**
 ZipVoice 在 CPU 上跑，8GB 的 i5 笔记本预计每字 0.5~1.5 秒。故事是按句合成的，第一句出来就能开始播。如果太慢，可以把 `BEDTIME_TTS_THREADS` 调大（不超过 CPU 核心数），或把故事长度改短。
@@ -146,7 +178,7 @@ ZipVoice 在 CPU 上跑，8GB 的 i5 笔记本预计每字 0.5~1.5 秒。故事�
 **Q：故事生成报错？**
 检查 `.env` 里的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL` 是否和 `~/.claude/settings.json` 里一致。
 
-## 五、macOS 12 上启用声音克隆（自编译 sherpa-onnx）
+## 六、macOS 12 上启用声音克隆（自编译 sherpa-onnx）
 
 官方 wheel 是在 macOS 13+ 上编译的，到了 macOS 12 会缺 `std::to_chars` 等系统符号。解决办法是本地编译 sherpa-onnx，链接一个还能在 macOS 12 上运行的 ONNX Runtime 1.17.1。
 

@@ -6,6 +6,8 @@ const preview = document.getElementById('preview');
 const voiceForm = document.getElementById('voiceForm');
 const storyForm = document.getElementById('storyForm');
 const storyStatus = document.getElementById('storyStatus');
+const topicRecordBtn = document.getElementById('topicRecordBtn');
+const topicStatus = document.getElementById('topicStatus');
 
 let recordedBlob = null;
 const RECORD_SECONDS = 5;
@@ -54,6 +56,36 @@ voiceForm.addEventListener('submit', async (e) => {
     location.reload();
   } catch (err) {
     recordStatus.textContent = err.message;
+  }
+});
+
+/* 按住/点一下说一句话，识别后自动填主题并生成故事 */
+const TOPIC_SECONDS = 6;
+
+topicRecordBtn.addEventListener('click', async () => {
+  topicRecordBtn.disabled = true;
+  topicStatus.textContent = '我在听……说出你想听的故事吧';
+  try {
+    const { blob } = await recordWav(TOPIC_SECONDS, (left) => {
+      topicStatus.textContent = left > 0 ? `我在听……还剩 ${left} 秒` : '让我想想你说的是什么……';
+    });
+    const data = new FormData();
+    data.append('file', blob, 'topic.wav');
+    const resp = await fetch('/api/transcribe', { method: 'POST', body: data });
+    const result = await resp.json();
+    if (!resp.ok) throw new Error(result.error || '没听清');
+    const text = (result.text || '').trim();
+    if (!text) throw new Error('没听清，再说一次好吗？');
+
+    document.getElementById('topic').value = text;
+    topicStatus.textContent = `听到了：“${text}”，正在生成故事……`;
+    topicRecordBtn.disabled = false;
+    // Safari 15 没有 requestSubmit，用事件兜底
+    if (storyForm.requestSubmit) storyForm.requestSubmit();
+    else storyForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  } catch (err) {
+    topicStatus.textContent = err.message || '没听清，再试一次吧';
+    topicRecordBtn.disabled = false;
   }
 });
 
