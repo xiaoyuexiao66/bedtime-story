@@ -15,7 +15,7 @@
 |------|----------|
 | **Linux 笔记本（推荐）** | 完整功能：故事生成 + 声音克隆（ZipVoice 本地推理） |
 | macOS 13+ | 完整功能 |
-| **macOS 12 及以下** | 只能调试界面：声音克隆引擎要求 macOS 13+，会自动退回系统语音 |
+| **macOS 12 及以下** | 用现成 wheel 不行，但在本机自编译 sherpa-onnx 后可以完整使用（见第五节） |
 
 ## 目录结构
 
@@ -52,6 +52,7 @@ python app.py
 浏览器打开 <http://localhost:8000>。
 
 Mac 上会自动使用系统语音（没有克隆能力），用来验证录音、生成故事、播放、故事库这些流程。
+如果这台 Mac 已经按第五节自编译过 sherpa-onnx，就会自动改用声音克隆。
 
 > 如果 Mac 的虚拟环境里装过 sherpa-onnx（之前测试留下的），先卸载避免干扰：
 > `pip uninstall -y sherpa-onnx sherpa-onnx-core`
@@ -144,6 +145,50 @@ ZipVoice 在 CPU 上跑，8GB 的 i5 笔记本预计每字 0.5~1.5 秒。故事�
 
 **Q：故事生成报错？**
 检查 `.env` 里的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL` 是否和 `~/.claude/settings.json` 里一致。
+
+## 五、macOS 12 上启用声音克隆（自编译 sherpa-onnx）
+
+官方 wheel 是在 macOS 13+ 上编译的，到了 macOS 12 会缺 `std::to_chars` 等系统符号。解决办法是本地编译 sherpa-onnx，链接一个还能在 macOS 12 上运行的 ONNX Runtime 1.17.1。
+
+```bash
+# 1. 下载 ONNX Runtime 1.17.1（最后一个支持 macOS 11+ 的版本）
+curl -LO https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-osx-x86_64-1.17.1.tgz
+tar -xzf onnxruntime-osx-x86_64-1.17.1.tgz -C /tmp/ort171 --strip-components=1
+
+# 2. 源码
+git clone --depth 1 --branch v1.12.26 https://github.com/k2-fsa/sherpa-onnx.git /tmp/sherpa-src
+
+# 3. 配置（让 CMake 使用上面下载的 ORT）
+export SHERPA_ONNXRUNTIME_INCLUDE_DIR=/tmp/ort171/include
+export SHERPA_ONNXRUNTIME_LIB_DIR=/tmp/ort171/lib
+cd /tmp/sherpa-src
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
+  -DSHERPA_ONNX_ENABLE_PYTHON=ON -DSHERPA_ONNX_ENABLE_BINARY=OFF \
+  -DSHERPA_ONNX_ENABLE_TESTS=OFF -DSHERPA_ONNX_ENABLE_WEBSOCKET=OFF \
+  -DSHERPA_ONNX_ENABLE_TTS=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+  -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON
+
+# 4. 编译（4GB 内存只能单线程，实测约 21 分钟）
+cmake --build build -j1
+```
+
+编译完成后，把包放进项目并安装到虚拟环境：
+
+```bash
+cd ~/bedtime-story
+mkdir -p vendor
+cp -R /tmp/sherpa-src/sherpa-onnx/python/sherpa_onnx vendor/
+cp /tmp/sherpa-src/build/lib/_sherpa_onnx.cpython-39-darwin.so vendor/sherpa_onnx/lib/
+cp /tmp/ort171/lib/libonnxruntime.1.17.1.dylib vendor/sherpa_onnx/lib/
+rm -rf .venv/lib/python3.9/site-packages/sherpa_onnx
+cp -R vendor/sherpa_onnx .venv/lib/python3.9/site-packages/
+```
+
+`vendor/` 已加入 `.gitignore`，重建虚拟环境后可以从这里复制回去，不用重新编译。
+
+> ZipVoice 配置里必须传 `data_dir`（指向 `models/zipvoice/espeak-ng-data`），否则中文里的数字和英文会报 “Please provide data dir for this model”。
+
+本机实测：加载模型约 5 秒；一篇 300 字的故事（约 37 秒音频）合成约 2 分 16 秒。
 
 ## 安全提醒
 

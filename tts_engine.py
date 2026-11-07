@@ -68,7 +68,9 @@ class SherpaZipVoiceEngine:
             "vocos_24khz.onnx",
             "lexicon.txt",
         ]
-        return all((config.ZIPVOICE_DIR / f).exists() for f in required)
+        return all((config.ZIPVOICE_DIR / f).exists() for f in required) and (
+            config.ZIPVOICE_DIR / "espeak-ng-data"
+        ).is_dir()
 
     def _load(self):
         if self._tts is not None:
@@ -80,6 +82,8 @@ class SherpaZipVoiceEngine:
             model=sherpa_onnx.OfflineTtsModelConfig(
                 zipvoice=sherpa_onnx.OfflineTtsZipvoiceModelConfig(
                     tokens=str(d / "tokens.txt"),
+                    # 中文用 lexicon.txt，但数字/英文会退到 espeak，必须给 data_dir
+                    data_dir=str(d / "espeak-ng-data"),
                     encoder=str(d / "encoder.int8.onnx"),
                     decoder=str(d / "decoder.int8.onnx"),
                     vocoder=str(d / "vocos_24khz.onnx"),
