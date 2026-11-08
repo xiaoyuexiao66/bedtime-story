@@ -10,6 +10,7 @@
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 import config
@@ -22,6 +23,13 @@ except ImportError:  # pragma: no cover
 
 class TTSError(Exception):
     pass
+
+
+# 模型加载很慢，整个进程只留一个引擎实例；
+# 同时 sherpa 的 OfflineTts 不能并发调用，合成时串行执行。
+_engine_cache = None
+_engine_lock = threading.Lock()
+_synth_lock = threading.Lock()
 
 
 def split_sentences(text: str, max_len: int = 60) -> list:
@@ -96,7 +104,12 @@ class SherpaZipVoiceEngine:
         self._tts = sherpa_onnx.OfflineTts(cfg)
         return self._tts
 
-    def synthesize(self, text, ref_wav, ref_text, out_path, on_progress=None):
+    def synthesize(self, *args, **kwargs):
+        # sherpa 的 OfflineTts 不是线程安全的，两个故事同时合成会崩
+        with _synth_lock:
+            return self._synthesize(*args, **kwargs)
+
+    def _synthesize(self, text, ref_wav, ref_text, out_path, on_progress=None):
         import soundfile as sf
 
         if np is None:
@@ -180,27 +193,38 @@ class SayEngine:
 
 
 def get_engine():
-    if config.TTS_ENGINE == "sherpa":
-        engine = SherpaZipVoiceEngine()
-        if not engine.available():
-            raise TTSError(
-                "ZipVoice 模型还没准备好。请先运行 python scripts/download_models.py，"
-                "并确认已安装 sherpa-onnx。"
-            )
-        return engine
-    if config.TTS_ENGINE == "say":
-        engine = SayEngine()
-        if not engine.available():
-            raise TTSError("当前系统没有 say 命令，请改用 sherpa 引擎")
-        return engine
+    """返回进程内唯一的引擎实例，避免每次合成都重新加载几百 MB 的模型。"""
+    global _engine_cache
+    with _engine_lock:
+        if _engine_cache is not None and _engine_cache.available():
+            return _engine_cache
+        _engine_cache = None
 
-    # auto：优先真实的克隆引擎，失败才退回系统语音
-    engine = SherpaZipVoiceEngine()
-    if engine.available():
-        return engine
-    say = SayEngine()
-    if say.available():
-        return say
-    raise TTSError(
-        "没有可用的 TTS 引擎：既没有 ZipVoice 模型，也没有 macOS 的 say 命令。"
-    )
+        if config.TTS_ENGINE == "sherpa":
+            engine = SherpaZipVoiceEngine()
+            if not engine.available():
+                raise TTSError(
+                    "ZipVoice 模型还没准备好。请先运行 python scripts/download_models.py，"
+                    "并确认已安装 sherpa-onnx。"
+                )
+            _engine_cache = engine
+            return engine
+        if config.TTS_ENGINE == "say":
+            engine = SayEngine()
+            if not engine.available():
+                raise TTSError("当前系统没有 say 命令，请改用 sherpa 引擎")
+            _engine_cache = engine
+            return engine
+
+        # auto：优先真实的克隆引擎，失败才退回系统语音
+        engine = SherpaZipVoiceEngine()
+        if engine.available():
+            _engine_cache = engine
+            return engine
+        say = SayEngine()
+        if say.available():
+            _engine_cache = say
+            return say
+        raise TTSError(
+            "没有可用的 TTS 引擎：既没有 ZipVoice 模型，也没有 macOS 的 say 命令。"
+        )

@@ -40,6 +40,12 @@ def init_db():
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (voice_id) REFERENCES voices(id)
             );
+
+            -- 键值对形式的小设置，目前用来记住“默认声音”
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             """
         )
 
@@ -69,12 +75,42 @@ def get_voice(voice_id: int):
         return dict(row) if row else None
 
 
+def get_default_voice():
+    """默认声音：优先用设置里选的那段；没有或已失效就用最新录的一段。"""
+    raw = get_setting("default_voice_id")
+    if raw:
+        try:
+            voice = get_voice(int(raw))
+        except (TypeError, ValueError):
+            voice = None
+        if voice:
+            return voice
+    voices = list_voices()
+    return voices[0] if voices else None
+
+
+# ---------- 设置 ----------
+def get_setting(key: str, default=None):
+    with _connect() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+
+def set_setting(key: str, value: str):
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, str(value)),
+        )
+
+
 # ---------- 故事 ----------
-def add_story(title: str, body: str, topic: str, age: int) -> int:
+def add_story(title: str, body: str, topic: str, age: int, voice_id=None) -> int:
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO stories (title, body, topic, age, created_at) VALUES (?, ?, ?, ?, ?)",
-            (title, body, topic, age, _now()),
+            "INSERT INTO stories (title, body, topic, age, voice_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (title, body, topic, age, voice_id, _now()),
         )
         return int(cur.lastrowid)
 
@@ -96,3 +132,8 @@ def set_story_audio(story_id: int, audio_path: str, engine: str):
             "UPDATE stories SET audio_path = ?, tts_engine = ? WHERE id = ?",
             (audio_path, engine, story_id),
         )
+
+
+def set_story_voice(story_id: int, voice_id: int):
+    with _connect() as conn:
+        conn.execute("UPDATE stories SET voice_id = ? WHERE id = ?", (voice_id, story_id))

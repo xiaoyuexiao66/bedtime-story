@@ -10,7 +10,7 @@
   <main class="wrap">
     <header class="hero">
       <h1>睡前故事机</h1>
-      <p class="sub">用妈妈的声音，讲一个温柔的故事</p>
+      <p class="sub">说出你想听的故事，让喜欢的声音讲给你听</p>
       {% if engine == 'sherpa' %}
         <span class="badge ok">声音克隆已就绪</span>
       {% elif engine == 'say' %}
@@ -41,11 +41,26 @@
       </form>
 
       {% if voices %}
+      <form id="defaultVoiceForm" class="voice-form">
+        <label>默认声音（孩子没说用谁讲时用它）
+          <select id="defaultVoiceSelect" name="voice_id">
+            {% for v in voices %}
+              <option value="{{ v.id }}" {% if default_voice and v.id == default_voice.id %}selected{% endif %}>{{ v.name }}（{{ v.created_at }}）</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="btn" type="submit">保存为默认</button>
+        <span id="defaultVoiceStatus" class="status"></span>
+      </form>
+
       <div class="voice-list">
         <h3>已保存的声音</h3>
         {% for v in voices %}
           <div class="voice-item">
-            <span>{{ v.name }}</span>
+            <span data-voice-id="{{ v.id }}">
+              {{ v.name }}
+              {% if default_voice and v.id == default_voice.id %}<span class="tag">默认</span>{% endif %}
+            </span>
             <small>{{ v.created_at }}</small>
           </div>
         {% endfor %}
@@ -55,9 +70,16 @@
 
     <section class="card">
       <h2>2. 生成一个故事</h2>
+      <p class="hint">说主题时可以带上想听的声音，比如“让奶奶讲小恐龙找朋友”。说完会自动写故事、合成并播放；没说用谁的声音，就用上面选的默认声音。</p>
       <div class="voice-topic">
         <button id="topicRecordBtn" class="btn primary big" type="button">🎤 说出你想听的故事</button>
         <span id="topicStatus" class="status">点一下，然后说一句话，比如“小恐龙找朋友”</span>
+      </div>
+      <div id="autoPanel" class="auto-panel" hidden>
+        <h3>讲给你听</h3>
+        <audio id="storyPlayer" controls preload="auto"></audio>
+        <p id="autoVoiceLine" class="status"></p>
+        <p class="hint"><a id="storyLink" href="/">查看故事文字</a></p>
       </div>
       <form id="storyForm" class="story-form">
         <label>故事主题
@@ -102,6 +124,7 @@
   </main>
 
   <script src="/static/recorder.js"></script>
+  <script src="/static/tts.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

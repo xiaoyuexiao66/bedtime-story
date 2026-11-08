@@ -178,6 +178,7 @@ audio {
   padding: 6px 0;
 }
 .voice-item small { color: var(--muted); }
+.voice-item .tag { margin-left: 6px; }
 
 .story-form { margin-bottom: 4px; }
 
@@ -231,6 +232,21 @@ audio {
 }
 
 .audio-box { margin-bottom: 16px; }
+
+.auto-panel {
+  margin: 16px 0 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fbf7ff;
+}
+.auto-panel h3 {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 8px;
+  font-weight: 500;
+}
+.auto-panel .hint { margin: 0; }
 
 .story-body p {
   font-size: 17px;

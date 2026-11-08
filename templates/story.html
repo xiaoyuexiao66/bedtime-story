@@ -31,7 +31,7 @@
         <label>用谁的声音朗读
           <select id="voiceSelect">
             {% for v in voices %}
-              <option value="{{ v.id }}">{{ v.name }}（{{ v.created_at }}）</option>
+              <option value="{{ v.id }}" {% if story.voice_id and v.id == story.voice_id %}selected{% endif %}>{{ v.name }}（{{ v.created_at }}）</option>
             {% endfor %}
           </select>
         </label>
@@ -46,6 +46,7 @@
     </article>
   </main>
 
+  <script src="/static/tts.js"></script>
   <script>
     const storyId = {{ story.id }};
     const btn = document.getElementById('ttsBtn');
@@ -57,19 +58,18 @@
       const voiceId = document.getElementById('voiceSelect').value;
       if (!voiceId) return;
       btn.disabled = true;
+      const started = Date.now();
       status.textContent = '正在合成……第一句出来前可能要等一会儿，请别关页面。';
       try {
-        const resp = await fetch(`/api/stories/${storyId}/tts`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({voice_id: Number(voiceId)})
+        const data = await window.waitForTts(storyId, voiceId, () => {
+          const seconds = Math.round((Date.now() - started) / 1000);
+          status.textContent = `正在合成……已等待 ${seconds} 秒，请别关页面。`;
         });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || '合成失败');
         player.src = data.audio_url + '?t=' + Date.now();
         audioBox.hidden = false;
         player.play().catch(() => {});
-        status.textContent = `合成完成，用时 ${data.seconds} 秒（引擎：${data.engine}）`;
+        const used = data.seconds != null ? `，用时 ${data.seconds} 秒` : '';
+        status.textContent = `合成完成${used}（引擎：${data.engine || '未知'}）`;
       } catch (err) {
         status.textContent = err.message;
       } finally {
